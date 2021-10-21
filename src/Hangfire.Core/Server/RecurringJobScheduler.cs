@@ -329,6 +329,8 @@ namespace Hangfire.Server
 
                     if (backgroundJob != null)
                     {
+                        stopwatch.Restart();
+
                         _factory.StateMachine.EnqueueBackgroundJob(
                             context.Storage,
                             connection,
@@ -337,9 +339,15 @@ namespace Hangfire.Server
                             backgroundJob,
                             "Triggered by recurring job scheduler",
                             _profiler);
+
+                        stopwatch.Stop();
+                        _logger.Info($"EnqueueBackgroundJob for job id {backgroundJob.Id} took {stopwatch.ElapsedMilliseconds} ms");
                     }
 
+                    stopwatch.Restart();
                     transaction.UpdateRecurringJob(recurringJob, changedFields, nextExecution, _logger);
+                    stopwatch.Stop();
+                    _logger.Info($"UpdateRecurringJob for job id {recurringJobId} took {stopwatch.ElapsedMilliseconds} ms");
                 }
                 catch (Exception ex)
                 {
@@ -350,7 +358,10 @@ namespace Hangfire.Server
                 // exceptions are always due to network issues, and in case of a timeout exception we
                 // can't determine whether it was actually succeeded or not, and can't perform an
                 // idempotent retry in this case.
+                stopwatch.Restart();
                 transaction.Commit();
+                stopwatch.Stop();
+                _logger.Info($"Commiting transaction for job id {recurringJobId} took {stopwatch.ElapsedMilliseconds} ms");
             }
         }
 

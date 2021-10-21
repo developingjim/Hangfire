@@ -17,6 +17,7 @@
 using System;
 using Hangfire.Annotations;
 using Hangfire.Common;
+using Hangfire.Logging;
 using Hangfire.Profiling;
 
 namespace Hangfire.States
@@ -26,6 +27,8 @@ namespace Hangfire.States
     {
         private readonly IJobFilterProvider _filterProvider;
         private readonly IStateMachine _innerStateMachine;
+
+        private readonly ILog _logger = LogProvider.For<StateMachine>();
 
         public StateMachine([NotNull] IJobFilterProvider filterProvider)
             : this(filterProvider, new CoreStateMachine())
@@ -45,12 +48,18 @@ namespace Hangfire.States
 
         public IState ApplyState(ApplyStateContext initialContext)
         {
+            var stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Start();
+
             var filterInfo = GetFilters(initialContext.BackgroundJob.Job);
             var electFilters = filterInfo.ElectStateFilters;
             var applyFilters = filterInfo.ApplyStateFilters;
 
             // Electing a a state
             var electContext = new ElectStateContext(initialContext);
+
+            _logger.Info($"Getting filters for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
+            stopwatch.Restart();
 
             foreach (var filter in electFilters)
             {
@@ -59,6 +68,9 @@ namespace Hangfire.States
                     InvokeOnStateElection,
                     $"OnStateElection for {electContext.BackgroundJob.Id}");
             }
+
+            _logger.Info($"Invoking OnStateElection for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
+            stopwatch.Restart();
 
             foreach (var state in electContext.TraversedStates)
             {
@@ -79,6 +91,9 @@ namespace Hangfire.States
                     $"OnStateUnapplied for {context.BackgroundJob.Id}");
             }
 
+            _logger.Info($"Invoking OnStateUnapplied for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
+            stopwatch.Restart();
+
             foreach (var filter in applyFilters)
             {
                 context.Profiler.InvokeMeasured(
@@ -87,7 +102,14 @@ namespace Hangfire.States
                     $"OnStateApplied for {context.BackgroundJob.Id}");
             }
 
-            return _innerStateMachine.ApplyState(context);
+            _logger.Info($"Invoking OnStateApplied for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
+            stopwatch.Restart();
+
+            var state = _innerStateMachine.ApplyState(context);
+            stopwatch.Stop();
+            _logger.Info($"Apply state (core) for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
+            
+            return state;
         }
 
         private static void InvokeOnStateElection(Tuple<IElectStateFilter, ElectStateContext> x)
