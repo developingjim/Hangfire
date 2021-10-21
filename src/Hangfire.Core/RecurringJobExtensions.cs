@@ -90,9 +90,9 @@ namespace Hangfire
 
             var score = nextExecution.HasValue ? JobHelper.ToTimestamp(nextExecution.Value) : -1.0D;
 
-            if (logger != null && logger.IsTraceEnabled())
+            if (logger != null && logger.IsDebugEnabled())
             {
-                logger.Trace($"Recurring job '{recurringJob.RecurringJobId}' is being updated. RecurringJob: ({recurringJob}), Changes: ({String.Join(";", changedFields.Select(x => $"{x.Key}:{x.Value}"))}), NextExecution: ({nextExecution})");
+                logger.Debug($"Recurring job '{recurringJob.RecurringJobId}' is being updated. RecurringJob: ({recurringJob}), Changes: ({String.Join(";", changedFields.Select(x => $"{x.Key}:{x.Value}"))}), NextExecution: ({nextExecution})");
             }
 
             transaction.AddToSet(

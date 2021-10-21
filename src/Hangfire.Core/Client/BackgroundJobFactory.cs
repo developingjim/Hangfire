@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Hangfire.Annotations;
 using Hangfire.Common;
+using Hangfire.Logging;
 using Hangfire.Profiling;
 using Hangfire.States;
 
@@ -28,6 +29,8 @@ namespace Hangfire.Client
     {
         private readonly IJobFilterProvider _filterProvider;
         private readonly IBackgroundJobFactory _innerFactory;
+
+        private readonly ILog _logger = LogProvider.For<BackgroundJobFactory>();
 
         public BackgroundJobFactory()
             : this(JobFilterProviders.Providers)
@@ -119,15 +122,21 @@ namespace Hangfire.Client
             return thunk();
         }
 
-        private static CreatedContext InvokeClientFilter(
+        private CreatedContext InvokeClientFilter(
             IClientFilter filter,
             CreatingContext preContext,
             Func<CreatedContext> continuation)
         {
+            var stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Start();
+
             preContext.Profiler.InvokeMeasured(
                 Tuple.Create(filter, preContext),
                 InvokeOnCreating,
                 $"OnCreating for {preContext.Job.Type.FullName}.{preContext.Job.Method.Name}");
+
+            stopwatch.Stop();
+            _logger.Info($"InvokeOnCreating filter {filter.GetType().Name} for job {preContext.Job.Type.FullName}.{preContext.Job.Method.Name} took {stopwatch.ElapsedMilliseconds} ms");
 
             if (preContext.Canceled)
             {
@@ -158,10 +167,16 @@ namespace Hangfire.Client
 
             if (!wasError)
             {
+                var stopwatch2 = new System.Diagnostics.Stopwatch();
+                stopwatch2.Start();
+
                 postContext.Profiler.InvokeMeasured(
                     Tuple.Create(filter, postContext),
                     InvokeOnCreated,
                     $"OnCreated for {postContext.BackgroundJob?.Id ?? "(null)"}");
+
+                stopwatch2.Stop();
+                _logger.Info($"InvokeOnCreated filter {filter.GetType().Name} for job {preContext.Job.Type.FullName}.{preContext.Job.Method.Name} and job id {postContext.BackgroundJob?.Id ?? "(null)"} took {stopwatch2.ElapsedMilliseconds} ms");
             }
 
             return postContext;

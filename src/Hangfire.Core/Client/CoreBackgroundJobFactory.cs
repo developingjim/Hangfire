@@ -63,6 +63,9 @@ namespace Hangfire.Client
 
             var createdAt = DateTime.UtcNow;
 
+            var stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Start();
+
             // Retry may cause multiple background jobs to be created, especially when there's
             // a timeout-related exception. But initialization attempt will be performed only
             // for the most recent job, leaving all the previous ones in a non-initialized state
@@ -75,6 +78,9 @@ namespace Hangfire.Client
                 parameters,
                 createdAt,
                 TimeSpan.FromDays(30)));
+
+            stopwatch.Stop();
+            _logger.Info($"CreateExpiredJob for job id {jobId} took {stopwatch.ElapsedMilliseconds} ms");
 
             if (String.IsNullOrEmpty(jobId))
             {
@@ -101,6 +107,8 @@ namespace Hangfire.Client
                         if (!String.IsNullOrEmpty(data.State)) return;
                     }
 
+                    stopwatch.Restart();
+
                     using (var transaction = context.Connection.CreateWriteTransaction())
                     {
                         var applyContext = new ApplyStateContext(
@@ -116,6 +124,9 @@ namespace Hangfire.Client
 
                         transaction.Commit();
                     }
+
+                    stopwatch.Stop();
+                    _logger.Info($"ApplyState for job id {jobId} took {stopwatch.ElapsedMilliseconds} ms");
                 });
             }
 

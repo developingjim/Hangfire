@@ -157,11 +157,18 @@ namespace Hangfire.Server
 
             do
             {
+                _logger.Info("Starting enqueue next recurring jobs"); // why is this showing so frequently?
+
+                var stopwatch = new System.Diagnostics.Stopwatch();
+                stopwatch.Start();
+
                 jobsProcessed = EnqueueNextRecurringJobs(context);
+
+                stopwatch.Stop();
 
                 if (jobsProcessed != 0)
                 {
-                    _logger.Debug($"{jobsProcessed} recurring job(s) processed by scheduler.");
+                    _logger.Info($"{jobsProcessed} recurring job(s) processed by scheduler, took {stopwatch.ElapsedMilliseconds} ms");
                 }
             } while (jobsProcessed > 0 && !context.IsStopping);
 
@@ -192,7 +199,11 @@ namespace Hangfire.Server
                 {
                     var now = _nowFactory();
                     var timestamp = JobHelper.ToTimestamp(now);
+                    var stopwatch = new System.Diagnostics.Stopwatch();
+                    stopwatch.Start();
                     var recurringJobIds = ((JobStorageConnection)connection).GetFirstByLowestScoreFromSet("recurring-jobs", 0, timestamp, BatchSize);
+                    _logger.Info($"(Batching) Got {recurringJobIds?.Count ?? 0} recurring jobs ids taking {stopwatch.ElapsedMilliseconds} ms to GetFirstByLowestScoreFromSet on recurring-jobs");
+                    stopwatch.Restart();
 
                     if (recurringJobIds != null)
                     {
@@ -204,9 +215,13 @@ namespace Hangfire.Server
                             jobsProcessed++;
                         }
                     }
+
+                    stopwatch.Stop();
+                    _logger.Info($"Finished enqueuing background jobs in {stopwatch.ElapsedMilliseconds}");
                 }
                 else
                 {
+                    _logger.Info("(Not Batching) Getting next recurring jobs");
                     for (var i = 0; i < BatchSize; i++)
                     {
                         if (context.IsStopping) break;
@@ -232,6 +247,9 @@ namespace Hangfire.Server
             string recurringJobId,
             DateTime now)
         {
+            var stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Start();
+
             using (connection.AcquireDistributedRecurringJobLock(recurringJobId, LockTimeout))
             {
                 var recurringJob = connection.GetRecurringJob(recurringJobId, _timeZoneResolver, now);
@@ -246,7 +264,11 @@ namespace Hangfire.Server
 
                 try
                 {
+                    _logger.Info($"Got recurring job id {recurringJobId} after {stopwatch.ElapsedMilliseconds} ms, scheduling...");
+                    stopwatch.Restart();
                     ScheduleRecurringJob(context, connection, recurringJobId, recurringJob, now);
+                    _logger.Info($"Scheduled recurring job id {recurringJobId} after {stopwatch.ElapsedMilliseconds} ms");
+                    stopwatch.Stop();
                     return;
                 }
                 catch (BackgroundJobClientException ex)
@@ -261,6 +283,8 @@ namespace Hangfire.Server
         private void ScheduleRecurringJob(BackgroundProcessContext context, IStorageConnection connection,
             string recurringJobId, RecurringJobEntity recurringJob, DateTime now)
         {
+            var stopwatch = new System.Diagnostics.Stopwatch();
+
             // We always start a transaction, regardless our recurring job was updated or not,
             // to prevent from infinite loop, when there's an old processing server (pre-1.7.0)
             // in our environment that doesn't know it should modify the score for entries in
@@ -285,7 +309,10 @@ namespace Hangfire.Server
                     {
                         if (nextExecution.HasValue && nextExecution <= now)
                         {
+                            stopwatch.Start();
                             backgroundJob = _factory.TriggerRecurringJob(context.Storage, connection, _profiler, recurringJob, now);
+                            stopwatch.Stop();
+                            _logger.Info($"Triggered recurring job {recurringJob?.RecurringJobId} took {stopwatch.ElapsedMilliseconds} ms");
 
                             if (String.IsNullOrEmpty(backgroundJob?.Id))
                             {
