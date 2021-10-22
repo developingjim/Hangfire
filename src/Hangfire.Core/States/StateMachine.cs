@@ -131,11 +131,11 @@ namespace Hangfire.States
             _logger.Info($"Invoking OnStateApplied for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
             stopwatch.Restart();
 
-            var state = _innerStateMachine.ApplyState(context);
+            var result = _innerStateMachine.ApplyState(context);
             stopwatch.Stop();
             _logger.Info($"Apply state (core) for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
             
-            return state;
+            return result;
         }
 
         private static void InvokeOnStateElection(Tuple<IElectStateFilter, ElectStateContext> x)
