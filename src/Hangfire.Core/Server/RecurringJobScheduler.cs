@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Hangfire.Annotations;
 using Hangfire.Client;
 using Hangfire.Common;
@@ -250,8 +251,12 @@ namespace Hangfire.Server
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
 
+            _logger.Info($"TryEnqueueBackgroundJob - AcquireDistributedRecurringJobLock - Start {recurringJobId}");
+
             using (connection.AcquireDistributedRecurringJobLock(recurringJobId, LockTimeout))
             {
+                _logger.Info($"TryEnqueueBackgroundJob - AcquireDistributedRecurringJobLock - Acquired {recurringJobId} duration {stopwatch.ElapsedMilliseconds} ms");
+
                 var recurringJob = connection.GetRecurringJob(recurringJobId, _timeZoneResolver, now);
 
                 if (recurringJob == null)
@@ -412,14 +417,29 @@ namespace Hangfire.Server
             var resource = "recurring-jobs:lock";
             try
             {
+                var stopwatch = new Stopwatch();
+
+                stopwatch.Start();
+
+                _logger.Info($"UseConnectionDistributedLock - Start {resource}");
+
                 using (var connection = storage.GetConnection())
                 using (connection.AcquireDistributedLock(resource, LockTimeout))
                 {
-                    return action(connection);
+                    stopwatch.Stop();
+                    _logger.Info($"UseConnectionDistributedLock - Acquired {resource} duration {stopwatch.ElapsedMilliseconds} ms");
+
+                    var result = action(connection);
+
+                    _logger.Info($"UseConnectionDistributedLock - Finished {resource}");
+
+                    return result;
                 }
             }
             catch (DistributedLockTimeoutException e) when (e.Resource.EndsWith(resource))
             {
+                _logger.Info($"UseConnectionDistributedLock - Exception {resource} {e}");
+
                 // DistributedLockTimeoutException here doesn't mean that recurring jobs weren't scheduled.
                 // It just means another Hangfire server did this work.
                 _logger.Log(
