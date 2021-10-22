@@ -15,6 +15,7 @@
 // License along with Hangfire. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using Hangfire.Annotations;
 using Hangfire.Common;
 using Hangfire.Logging;
@@ -61,12 +62,20 @@ namespace Hangfire.States
             _logger.Info($"Getting filters for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
             stopwatch.Restart();
 
+            var electFilterStopwatch = new Stopwatch();
+
             foreach (var filter in electFilters)
             {
+                electFilterStopwatch.Start();
+
                 electContext.Profiler.InvokeMeasured(
                     Tuple.Create(filter, electContext),
                     InvokeOnStateElection,
                     $"OnStateElection for {electContext.BackgroundJob.Id}");
+
+                _logger.Info($"Elect Filter {filter.GetType().Name} for job id {initialContext.BackgroundJob?.Id} took {electFilterStopwatch.ElapsedMilliseconds} ms");
+
+                electFilterStopwatch.Restart();
             }
 
             _logger.Info($"Invoking OnStateElection for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
@@ -83,23 +92,40 @@ namespace Hangfire.States
                 JobExpirationTimeout = initialContext.JobExpirationTimeout
             };
 
+
+            var unappliedFilterStopwatch = new Stopwatch();
+
             foreach (var filter in applyFilters)
             {
+                unappliedFilterStopwatch.Start();
+
                 context.Profiler.InvokeMeasured(
                     Tuple.Create(filter, context),
                     InvokeOnStateUnapplied,
                     $"OnStateUnapplied for {context.BackgroundJob.Id}");
+
+                _logger.Info($"Unapplied Filter {filter.GetType().Name} for job id {context.BackgroundJob?.Id} took {unappliedFilterStopwatch.ElapsedMilliseconds} ms");
+
+                unappliedFilterStopwatch.Restart();
             }
 
             _logger.Info($"Invoking OnStateUnapplied for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
             stopwatch.Restart();
 
+            var appliedFilterStopwatch = new Stopwatch();
+
             foreach (var filter in applyFilters)
             {
+                appliedFilterStopwatch.Start();
+
                 context.Profiler.InvokeMeasured(
                     Tuple.Create(filter, context),
                     InvokeOnStateApplied,
                     $"OnStateApplied for {context.BackgroundJob.Id}");
+
+                _logger.Info($"Applied Filter {filter.GetType().Name} for job id {context.BackgroundJob?.Id} took {appliedFilterStopwatch.ElapsedMilliseconds} ms");
+
+                appliedFilterStopwatch.Restart();
             }
 
             _logger.Info($"Invoking OnStateApplied for job id {initialContext.BackgroundJob?.Id} took {stopwatch.ElapsedMilliseconds} ms");
